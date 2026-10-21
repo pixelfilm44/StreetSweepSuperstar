@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Street Sweep Superstar — Claymation Demolition Arcade</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Titan+One&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="game-container">
+    <canvas id="game-canvas"></canvas>
+
+    <!-- Floating 3D->2D world popups container -->
+    <div id="popups-layer"></div>
+
+    <!-- Mobile / Touch Virtual Clay Joystick -->
+    <div id="touch-joystick-zone" aria-label="Touch steering area">
+      <div id="joystick-base" class="joystick-base hidden">
+        <div id="joystick-knob" class="joystick-knob"></div>
+      </div>
+      <div id="touch-hint" class="touch-hint">👆 DRAG ANYWHERE TO DRIVE &amp; STEER</div>
+    </div>
+
+    <!-- Top Arcade HUD -->
+    <header id="hud-top">
+      <div class="clay-card hud-score-panel">
+        <div class="hud-label">SCORE</div>
+        <div id="score-value" class="hud-big-num">0</div>
+        <div id="combo-badge" class="combo-badge hidden">
+          <span id="combo-count">2x</span> COMBO!
+          <div class="combo-timer-bar"><div id="combo-timer-fill"></div></div>
+        </div>
+      </div>
+
+      <div class="clay-card hud-timer-panel">
+        <div class="hud-label">SHIFT TIMER</div>
+        <div id="timer-value" class="hud-timer-num">01:30</div>
+        <div id="shift-level-badge" class="shift-badge">SHIFT #1 • DOWNTOWN CLAYVILLE</div>
+      </div>
+
+      <div class="clay-card hud-clean-panel">
+        <div class="hud-row-between">
+          <span class="hud-label">CITY CLEANLINESS</span>
+          <span id="clean-percent" class="hud-clean-num">0%</span>
+        </div>
+        <div class="clay-progress-track">
+          <div id="clean-bar-fill" class="clay-progress-fill clean-fill"></div>
+          <div class="quota-marker" style="left: 75%;" title="Shift Quota: 75%"></div>
+        </div>
+        <div class="hud-subtext">
+          <span>Target Quota: <strong id="quota-target">75%</strong></span>
+          <span>Smiles &amp; Wrecks: <strong id="wrecks-count">0</strong></span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Bottom Arcade HUD: Compactor Cannon & Controls -->
+    <footer id="hud-bottom">
+      <div class="clay-card compactor-panel" id="compactor-card">
+        <div class="compactor-header">
+          <div>
+            <span class="hud-label">CLAY COMPACTOR CANNON</span>
+            <span id="compactor-status" class="compactor-status">SWEEP &amp; SMASH TO FILL!</span>
+          </div>
+          <span id="compactor-percent" class="compactor-num">0%</span>
+        </div>
+        <div class="clay-progress-track compactor-track">
+          <div id="compactor-bar-fill" class="clay-progress-fill compactor-fill"></div>
+        </div>
+        <div class="compactor-actions">
+          <button id="fire-boulder-btn" class="clay-btn btn-fire" disabled>
+            <span>☄️ LAUNCH CLAY BOULDER [SPACE]</span>
+          </button>
+          <button id="turbo-btn" class="clay-btn btn-turbo">
+            <span>⚡ TURBO SWEEP [SHIFT]</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="clay-card controls-settings-panel">
+        <div class="controls-mini">
+          <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / <kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd> Drive &amp; Smash</div>
+          <div><kbd>SPACE</kbd> Fire Clay Boulder • <kbd>SHIFT</kbd> Turbo Drift</div>
+          <div><kbd>H</kbd> Horn &amp; Shockwave</div>
+        </div>
+        <div class="toggles-row">
+          <button id="toggle-stopmotion" class="clay-pill active" title="Toggle 12 FPS Stop-Motion Clay Wobble">
+            🎬 12fps Clay Feel: ON
+          </button>
+          <button id="toggle-sound" class="clay-pill active" title="Toggle Arcade Sound Effects">
+            🔊 SFX: ON
+          </button>
+        </div>
+      </div>
+    </footer>
+
+    <!-- Start / Title Modal -->
+    <div id="modal-overlay" class="modal-overlay">
+      <div class="clay-modal" id="start-modal">
+        <div class="modal-badge">STOP-MOTION ARCADE ACTION</div>
+        <h1 class="game-title">STREET SWEEP<br/><span>SUPERSTAR</span></h1>
+        <p class="modal-tagline">
+          The streets of <strong>Clayville</strong> are filthy—and parked cars are blocking the curb!
+          Fire up <em>Big Bristle</em>, scrub the asphalt spotless, flatten every car &amp; bike in your lane,
+          and launch giant compacted <strong>Play-Doh Boulders</strong> before your 90-second shift ends!
+        </p>
+
+        <div class="feature-grid">
+          <div class="feature-item">
+            <div class="feature-icon">🧹</div>
+            <div>
+              <strong>Scrub &amp; Vacuum</strong>
+              <p>Sweep grime, trash piles, and clay chunks to hit the 75% Cleanliness Quota and earn +Time bonuses!</p>
+            </div>
+          </div>
+          <div class="feature-item">
+            <div class="feature-icon">🚗💥</div>
+            <div>
+              <strong>Total Demolition</strong>
+              <p>Plow right through sedans, taxis, vans, and bikes! Squash them into flat clay pancakes or send them flying!</p>
+            </div>
+          </div>
+          <div class="feature-item">
+            <div class="feature-icon">☄️</div>
+            <div>
+              <strong>Clay-Ball Compactor</strong>
+              <p>Every car &amp; trash heap fills your hopper. Press <kbd>SPACE</kbd> to fire a colossal marbled clay boulder down the street!</p>
+            </div>
+          </div>
+        </div>
+
+        <button id="start-game-btn" class="clay-btn btn-primary-large">
+          START 90s SHIFT! 🚜💨
+        </button>
+      </div>
+
+      <!-- End of Shift / Game Over Modal -->
+      <div class="clay-modal hidden" id="gameover-modal">
+        <div id="gameover-badge" class="modal-badge">SHIFT COMPLETE!</div>
+        <h2 id="gameover-title" class="game-title-sm">STREET SWEEP SUPERSTAR!</h2>
+        <p id="gameover-subtitle" class="modal-tagline">You left Clayville sparkling (and slightly flattened)!</p>
+
+        <div class="stats-grid">
+          <div class="stat-box">
+            <span class="stat-label">FINAL SCORE</span>
+            <span id="final-score" class="stat-val">0</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">CLEANLINESS</span>
+            <span id="final-clean" class="stat-val">0%</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">VEHICLES SMASHED</span>
+            <span id="final-wrecks" class="stat-val">0</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">BOULDERS FIRED</span>
+            <span id="final-boulders" class="stat-val">0</span>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button id="next-shift-btn" class="clay-btn btn-primary-large">
+            PLAY AGAIN / NEXT SHIFT 🚜
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="game.js"></script>
+</body>
+</html>
