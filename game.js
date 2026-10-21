@@ -306,7 +306,22 @@ const cityGroup = new THREE.Group();
 scene.add(cityGroup);
 
 const buildingObstacles = []; // { x, z, halfW, halfD }
-const streetProps = [];       // Hydrants, cones, mailboxes that can be smashed
+const streetProps = [];       // Hydrants, hot-dog carts, cafe tables, bus stops, newsstands
+
+// Dynamic emissive material for building windows & streetlamps (glows warmly in Night Mode!)
+const buildingWindowMat = new THREE.MeshStandardMaterial({
+  color: 0xfff3b0,
+  emissive: 0xffae00,
+  emissiveIntensity: 0.0,
+  roughness: 0.55,
+});
+
+const streetLampBulbMat = new THREE.MeshStandardMaterial({
+  color: 0xfff8d6,
+  emissive: 0xffd166,
+  emissiveIntensity: 0.1,
+  roughness: 0.4,
+});
 
 function isOnRoad(x, z, margin = 0) {
   const half = ROAD_WIDTH * 0.5 + margin;
@@ -400,6 +415,12 @@ function buildClayCity() {
         [[-6, -6], [6, -6], [-6, 6], [6, 6]].forEach(([ox, oz]) => {
           createClayTree(bx + ox, bz + oz);
         });
+
+        // Add Hot-Dog Carts & Cafe Umbrellas along the park perimeter!
+        spawnHotDogCart(bx + w * 0.43, bz);
+        spawnHotDogCart(bx - w * 0.43, bz);
+        spawnCafeTable(bx, bz + d * 0.43);
+        spawnCafeTable(bx, bz - d * 0.43);
       } else {
         // Create 1 or 2 chunky clay buildings on this block
         const bW = w - 5.2;
@@ -424,18 +445,17 @@ function buildClayCity() {
         roof.castShadow = true;
         bldgGroup.add(roof);
 
-        // Chunky clay windows & shop awning
-        const winMat = getClayMaterial(0xfff3b0, 0.65, 0.02);
+        // Chunky clay windows (glow warmly in Night Mode!)
         const floors = Math.max(2, Math.floor(bH / 3.2));
         for (let f = 1; f < floors; f++) {
           const wy = f * 2.9 + 1.2;
           for (let wx = -bW * 0.3; wx <= bW * 0.3; wx += bW * 0.3) {
             if (Math.abs(wx) < 0.1 && bW < 12) continue;
-            const wFront = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.5, 0.35), winMat);
+            const wFront = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.5, 0.35), buildingWindowMat);
             wFront.position.set(wx, wy, bD * 0.5 + 0.08);
             bldgGroup.add(wFront);
 
-            const wSide = new THREE.Mesh(new THREE.BoxGeometry(0.35, 1.5, 1.4), winMat);
+            const wSide = new THREE.Mesh(new THREE.BoxGeometry(0.35, 1.5, 1.4), buildingWindowMat);
             wSide.position.set(bW * 0.5 + 0.08, wy, wx);
             bldgGroup.add(wSide);
           }
@@ -444,10 +464,14 @@ function buildClayCity() {
         cityGroup.add(bldgGroup);
         buildingObstacles.push({ x: bx, z: bz, halfW: bW * 0.5 + 0.6, halfD: bD * 0.5 + 0.6 });
 
-        // Add smashable fire hydrants & traffic cones on sidewalk corners
+        // Populate sidewalk curbs with destructible street furniture!
         if (!isEdgeBlock) {
-          spawnHydrant(bx + w * 0.42, bz + d * 0.42);
-          spawnHydrant(bx - w * 0.42, bz - d * 0.42);
+          spawnHydrant(bx + w * 0.44, bz + d * 0.44);
+          spawnNewsstand(bx - w * 0.44, bz - d * 0.44);
+          spawnCafeTable(bx + w * 0.44, bz - d * 0.22);
+          spawnHotDogCart(bx - w * 0.44, bz + d * 0.25);
+          spawnBusStop(bx, bz + d * 0.45);
+          spawnStreetLamp(bx - w * 0.44, bz + d * 0.44);
         }
       }
     });
@@ -492,6 +516,43 @@ function createClayTree(x, z) {
   cityGroup.add(tree);
 }
 
+function spawnStreetLamp(x, z) {
+  const lamp = new THREE.Group();
+  lamp.position.set(x, 0.7, z);
+  const pole = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.18, 0.26, 4.6, 8),
+    getClayMaterial(PALETTE.darkClay)
+  );
+  pole.position.y = 2.3;
+  pole.castShadow = true;
+  lamp.add(pole);
+
+  const globe = new THREE.Mesh(
+    moldClayGeometry(new THREE.SphereGeometry(0.58, 10, 10), 0.03),
+    streetLampBulbMat
+  );
+  globe.position.y = 4.75;
+  lamp.add(globe);
+  cityGroup.add(lamp);
+}
+
+function registerStreetProp(mesh, x, z, type, label, burstColor, points = 150) {
+  cityGroup.add(mesh);
+  streetProps.push({
+    mesh,
+    x,
+    z,
+    origY: mesh.position.y,
+    type,
+    label,
+    burstColor,
+    points,
+    smashed: false,
+    vel: new THREE.Vector3(),
+    rotVel: new THREE.Vector3(),
+  });
+}
+
 function spawnHydrant(x, z) {
   const group = new THREE.Group();
   group.position.set(x, 0.7, z);
@@ -511,15 +572,138 @@ function spawnHydrant(x, z) {
   cap.position.y = 1.35;
   group.add(cap);
 
-  cityGroup.add(group);
-  streetProps.push({
-    mesh: group,
-    x,
-    z,
-    type: 'hydrant',
-    smashed: false,
-    vel: new THREE.Vector3(),
-    rotVel: new THREE.Vector3(),
+  registerStreetProp(group, x, z, 'hydrant', 'HYDRANT GUSHER!', 0x3b82f6, 130);
+}
+
+// Smashable Hot-Dog Cart with striped umbrella!
+function spawnHotDogCart(x, z) {
+  const group = new THREE.Group();
+  group.position.set(x, 0.7, z);
+
+  const cartBox = new THREE.Mesh(
+    moldClayGeometry(new THREE.BoxGeometry(1.7, 1.15, 1.2, 2, 2, 2), 0.05),
+    getClayMaterial(0xffbe0b)
+  );
+  cartBox.position.y = 0.7;
+  cartBox.castShadow = true;
+  group.add(cartBox);
+
+  const stripe = new THREE.Mesh(
+    new THREE.BoxGeometry(1.78, 0.38, 1.26),
+    getClayMaterial(0xef233c)
+  );
+  stripe.position.y = 0.75;
+  group.add(stripe);
+
+  const pole = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.09, 0.09, 2.2, 6),
+    getClayMaterial(PALETTE.creamClay)
+  );
+  pole.position.y = 1.8;
+  group.add(pole);
+
+  const umbrella = new THREE.Mesh(
+    moldClayGeometry(new THREE.ConeGeometry(1.45, 0.85, 10), 0.06),
+    getClayMaterial(0xff595e)
+  );
+  umbrella.position.y = 2.85;
+  umbrella.castShadow = true;
+  group.add(umbrella);
+
+  registerStreetProp(group, x, z, 'hotdog', 'HOT-DOG EXPLOSION! 🌭', 0xffbe0b, 220);
+}
+
+// Smashable Sidewalk Café Table & Bistro Umbrella
+function spawnCafeTable(x, z) {
+  const group = new THREE.Group();
+  group.position.set(x, 0.7, z);
+
+  const tableTop = new THREE.Mesh(
+    moldClayGeometry(new THREE.CylinderGeometry(1.05, 1.05, 0.22, 10), 0.04),
+    getClayMaterial(PALETTE.creamClay)
+  );
+  tableTop.position.y = 0.95;
+  tableTop.castShadow = true;
+  group.add(tableTop);
+
+  const leg = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.14, 0.3, 0.95, 8),
+    getClayMaterial(PALETTE.darkClay)
+  );
+  leg.position.y = 0.48;
+  group.add(leg);
+
+  const umbrella = new THREE.Mesh(
+    moldClayGeometry(new THREE.ConeGeometry(1.35, 0.75, 9), 0.05),
+    getClayMaterial(0x18b7a0)
+  );
+  umbrella.position.y = 2.35;
+  umbrella.castShadow = true;
+  group.add(umbrella);
+
+  registerStreetProp(group, x, z, 'cafe', 'CAFÉ CRUSH! ☕', 0x18b7a0, 190);
+}
+
+// Smashable Clay Bus Stop Shelter
+function spawnBusStop(x, z) {
+  const group = new THREE.Group();
+  group.position.set(x, 0.7, z);
+
+  const roof = new THREE.Mesh(
+    moldClayGeometry(new THREE.BoxGeometry(2.6, 0.32, 1.35, 3, 1, 2), 0.04),
+    getClayMaterial(0x3b82f6)
+  );
+  roof.position.y = 2.45;
+  roof.castShadow = true;
+  group.add(roof);
+
+  const backWall = new THREE.Mesh(
+    moldClayGeometry(new THREE.BoxGeometry(2.4, 2.2, 0.22, 3, 2, 1), 0.04),
+    getClayMaterial(0x8ecae6, 0.5)
+  );
+  backWall.position.set(0, 1.25, -0.5);
+  group.add(backWall);
+
+  const bench = new THREE.Mesh(
+    moldClayGeometry(new THREE.BoxGeometry(1.8, 0.35, 0.55), 0.03),
+    getClayMaterial(0xff924c)
+  );
+  bench.position.set(0, 0.55, -0.15);
+  group.add(bench);
+
+  registerStreetProp(group, x, z, 'busstop', 'BUS STOP SMASH! 🚌', 0x3b82f6, 260);
+}
+
+// Smashable Newspaper Stand Box
+function spawnNewsstand(x, z) {
+  const group = new THREE.Group();
+  group.position.set(x, 0.7, z);
+
+  const box = new THREE.Mesh(
+    moldClayGeometry(new THREE.BoxGeometry(0.85, 1.45, 0.75, 2, 2, 2), 0.04),
+    getClayMaterial(0x9b5de5)
+  );
+  box.position.y = 0.75;
+  box.castShadow = true;
+  group.add(box);
+
+  const windowSlot = new THREE.Mesh(
+    new THREE.BoxGeometry(0.68, 0.45, 0.8),
+    getClayMaterial(PALETTE.creamClay)
+  );
+  windowSlot.position.y = 1.05;
+  group.add(windowSlot);
+
+  registerStreetProp(group, x, z, 'newsstand', 'EXTRA! EXTRA! 📰', 0x9b5de5, 160);
+}
+
+function resetStreetProps() {
+  streetProps.forEach((p) => {
+    p.smashed = false;
+    p.mesh.visible = true;
+    p.mesh.position.set(p.x, p.origY, p.z);
+    p.mesh.rotation.set(0, 0, 0);
+    p.vel.set(0, 0, 0);
   });
 }
 
@@ -621,6 +805,40 @@ class ClaySweeperTruck {
     bumper.position.set(0, 1.15, 3.25);
     bumper.castShadow = true;
     this.bodyGroup.add(bumper);
+
+    // Night-Mode Volumetric Headlight Cones + Real PointLight!
+    this.headlightsGroup = new THREE.Group();
+    const coneBeamGeo = new THREE.ConeGeometry(2.6, 11, 14, 1, true);
+    coneBeamGeo.rotateX(Math.PI / 2);
+    const coneBeamMat = new THREE.MeshBasicMaterial({
+      color: 0xfff3a8,
+      transparent: true,
+      opacity: 0.18,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const leftBeam = new THREE.Mesh(coneBeamGeo, coneBeamMat);
+    leftBeam.position.set(-1.2, 1.1, 8.6);
+    const rightBeam = new THREE.Mesh(coneBeamGeo, coneBeamMat);
+    rightBeam.position.set(1.2, 1.1, 8.6);
+    this.headlightPoint = new THREE.PointLight(0xffe699, 3.2, 28, 1.2);
+    this.headlightPoint.position.set(0, 2.4, 6.5);
+    this.headlightsGroup.add(leftBeam, rightBeam, this.headlightPoint);
+    this.headlightsGroup.visible = false;
+    this.bodyGroup.add(this.headlightsGroup);
+
+    // Dual Side-Flamethrower Nozzles (visible when Flamethrower Power-Up is active!)
+    this.flamethrowerGroup = new THREE.Group();
+    const nozzleGeo = moldClayGeometry(new THREE.CylinderGeometry(0.32, 0.48, 1.4, 8), 0.04);
+    nozzleGeo.rotateZ(Math.PI / 2);
+    const nozzleMat = getClayMaterial(0xff477e);
+    const leftNozzle = new THREE.Mesh(nozzleGeo, nozzleMat);
+    leftNozzle.position.set(-2.5, 1.65, 0.8);
+    const rightNozzle = new THREE.Mesh(nozzleGeo, nozzleMat);
+    rightNozzle.position.set(2.5, 1.65, 0.8);
+    this.flamethrowerGroup.add(leftNozzle, rightNozzle);
+    this.flamethrowerGroup.visible = false;
+    this.bodyGroup.add(this.flamethrowerGroup);
 
     // 4. Dual Oversized Spinning Rotary Brushes in Front!
     this.leftBrush = this.createRotaryBrush(PALETTE.brushBlue, PALETTE.sweeperYellow);
@@ -954,6 +1172,246 @@ function resetTraffic() {
 }
 
 // ============================================================================
+// 8B. POWER-UP CLAY CANS (Collectible Golden Play-Doh Tubs on Intersections)
+// ============================================================================
+const powerupTubs = [];
+const POWERUP_TYPES = [
+  { id: 'magnet', label: '🧲 GIANT MAGNET BRUSHES!', lidColor: 0x3b82f6 },
+  { id: 'flamethrower', label: '🔥 DUAL SIDE-FLAMETHROWERS!', lidColor: 0xff477e },
+  { id: 'steamroller', label: '🛞 GIANT STEAMROLLER TIRES!', lidColor: 0x38ef7d },
+];
+
+function createPowerupTubMesh(lidColor) {
+  const group = new THREE.Group();
+
+  // Golden Play-Doh tub cylinder
+  const tub = new THREE.Mesh(
+    moldClayGeometry(new THREE.CylinderGeometry(1.15, 0.95, 1.55, 12), 0.04),
+    new THREE.MeshStandardMaterial({
+      color: 0xffbe0b,
+      emissive: 0xff9200,
+      emissiveIntensity: 0.35,
+      roughness: 0.45,
+      bumpMap: sharedClayBump,
+      bumpScale: 0.03,
+    })
+  );
+  tub.position.y = 1.1;
+  tub.castShadow = true;
+  group.add(tub);
+
+  // Chunky colorful Play-Doh lid
+  const lid = new THREE.Mesh(
+    moldClayGeometry(new THREE.CylinderGeometry(1.3, 1.3, 0.36, 12), 0.04),
+    getClayMaterial(lidColor, 0.65)
+  );
+  lid.position.y = 1.95;
+  lid.castShadow = true;
+  group.add(lid);
+
+  return group;
+}
+
+function spawnPowerupTubs() {
+  powerupTubs.forEach((t) => scene.remove(t.mesh));
+  powerupTubs.length = 0;
+
+  // Place Golden Play-Doh Tubs on 6 road intersections
+  const coords = [-54, -18, 18, 54];
+  let idx = 0;
+  coords.forEach((ix) => {
+    coords.forEach((iz) => {
+      if ((Math.abs(ix) === 18 && Math.abs(iz) === 18) || (Math.abs(ix) === 54 && Math.abs(iz) === 54 && idx % 2 === 0)) {
+        const pType = POWERUP_TYPES[idx % POWERUP_TYPES.length];
+        idx++;
+        const mesh = createPowerupTubMesh(pType.lidColor);
+        mesh.position.set(ix, 0.2, iz);
+        scene.add(mesh);
+        powerupTubs.push({
+          mesh,
+          x: ix,
+          z: iz,
+          powerup: pType,
+          active: true,
+          respawnTimer: 0,
+        });
+      }
+    });
+  });
+}
+
+function activatePowerup(pType) {
+  gameState.activePowerup = pType.id;
+  gameState.powerupTimer = 12.0;
+  sfx.playBonusFanfare();
+  spawnWorldPopup(sweeper.pos.x, 5.2, sweeper.pos.z, pType.label, 'time-bonus');
+  applySweeperPowerupVisuals();
+}
+
+function applySweeperPowerupVisuals() {
+  const p = gameState.activePowerup;
+
+  // 1. Giant Magnet Brushes scale
+  const brushScale = p === 'magnet' ? 1.85 : 1.0;
+  sweeper.leftBrush.scale.setScalar(brushScale);
+  sweeper.rightBrush.scale.setScalar(brushScale);
+
+  // 2. Dual Side-Flamethrowers visibility
+  sweeper.flamethrowerGroup.visible = p === 'flamethrower';
+
+  // 3. Giant Steamroller Tires scale
+  const wheelScale = p === 'steamroller' ? 1.85 : 1.0;
+  sweeper.wheels.forEach((w) => w.scale.setScalar(wheelScale));
+  sweeper.group.scale.setScalar(p === 'steamroller' ? 1.28 : 1.0);
+}
+
+// ============================================================================
+// 8C. CITY ENFORCERS / BOSS HAZARDS (Armored Clay Dump Trucks & Police Cruisers)
+// ============================================================================
+const enforcers = [];
+
+function createEnforcerMesh(isDumpTruck) {
+  const group = new THREE.Group();
+
+  if (isDumpTruck) {
+    // Colossal Armored Clay Enforcer Dump Truck with Bulldozer Plow
+    const body = new THREE.Mesh(
+      moldClayGeometry(new THREE.BoxGeometry(3.8, 2.5, 6.2, 4, 3, 4), 0.08),
+      getClayMaterial(0x5a189a, 0.78)
+    );
+    body.position.y = 1.75;
+    body.castShadow = true;
+    group.add(body);
+
+    const cab = new THREE.Mesh(
+      moldClayGeometry(new THREE.BoxGeometry(3.5, 2.1, 2.2, 3, 2, 2), 0.06),
+      getClayMaterial(PALETTE.darkClay)
+    );
+    cab.position.set(0, 2.3, 2.1);
+    cab.castShadow = true;
+    group.add(cab);
+
+    // Spiky Orange Clay Bulldozer Blade in front
+    const blade = new THREE.Mesh(
+      moldClayGeometry(new THREE.BoxGeometry(4.6, 1.45, 1.1, 4, 2, 2), 0.07),
+      getClayMaterial(0xff6b35)
+    );
+    blade.position.set(0, 1.1, 3.55);
+    blade.castShadow = true;
+    group.add(blade);
+  } else {
+    // Clay Police Cruiser Interceptor + Flashing Red/Blue Lightbar
+    const lower = new THREE.Mesh(
+      moldClayGeometry(new THREE.BoxGeometry(2.7, 1.15, 4.6, 3, 2, 4), 0.06),
+      getClayMaterial(PALETTE.darkClay)
+    );
+    lower.position.y = 0.95;
+    lower.castShadow = true;
+    group.add(lower);
+
+    const doors = new THREE.Mesh(
+      moldClayGeometry(new THREE.BoxGeometry(2.78, 0.95, 2.1, 2, 2, 2), 0.04),
+      getClayMaterial(PALETTE.creamClay)
+    );
+    doors.position.y = 1.0;
+    group.add(doors);
+
+    const cabin = new THREE.Mesh(
+      moldClayGeometry(new THREE.BoxGeometry(2.3, 1.0, 2.3, 3, 2, 3), 0.05),
+      getClayMaterial(PALETTE.creamClay)
+    );
+    cabin.position.set(0, 1.85, -0.1);
+    group.add(cabin);
+  }
+
+  // Flashing Red & Blue Siren Bar on top
+  const redLight = new THREE.Mesh(
+    new THREE.BoxGeometry(0.95, 0.42, 0.48),
+    new THREE.MeshStandardMaterial({ color: 0xff2a55, emissive: 0xff0033, emissiveIntensity: 1.2 })
+  );
+  redLight.position.set(-0.55, isDumpTruck ? 3.6 : 2.5, isDumpTruck ? 2.1 : -0.1);
+  const blueLight = new THREE.Mesh(
+    new THREE.BoxGeometry(0.95, 0.42, 0.48),
+    new THREE.MeshStandardMaterial({ color: 0x00bbff, emissive: 0x0088ff, emissiveIntensity: 1.2 })
+  );
+  blueLight.position.set(0.55, isDumpTruck ? 3.6 : 2.5, isDumpTruck ? 2.1 : -0.1);
+  group.add(redLight, blueLight);
+
+  return group;
+}
+
+function spawnEnforcerBoss() {
+  if (enforcers.length >= 4) return;
+  const isDumpTruck = Math.random() < 0.55;
+  const mesh = createEnforcerMesh(isDumpTruck);
+
+  // Spawn on a road 42m away from player
+  const rc = ROAD_COORDS[Math.floor(Math.random() * ROAD_COORDS.length)];
+  const x = rc;
+  const z = sweeper.pos.z > 0 ? -54 : 54;
+  mesh.position.set(x, 0, z);
+  scene.add(mesh);
+
+  enforcers.push({
+    mesh,
+    isDumpTruck,
+    x,
+    z,
+    heading: 0,
+    speed: isDumpTruck ? 14.5 : 18.5,
+    radius: isDumpTruck ? 3.2 : 2.5,
+    state: 'pursuing', // 'pursuing' | 'pancaked' | 'flying'
+    vel: new THREE.Vector3(),
+    rotVel: new THREE.Vector3(),
+    timer: 0,
+    bumpCooldown: 0,
+  });
+
+  sfx.playHorn();
+  spawnWorldPopup(
+    sweeper.pos.x,
+    5.4,
+    sweeper.pos.z,
+    isDumpTruck ? '🚨 HEAVY CLAY DUMP TRUCK INCOMING!' : '🚓 POLICE BLOCKADE DISPATCHED!',
+    'boulder'
+  );
+}
+
+function resetEnforcers() {
+  enforcers.forEach((e) => scene.remove(e.mesh));
+  enforcers.length = 0;
+}
+
+function demolishEnforcer(e, impactDir, isMegaBoulder = false) {
+  if (e.state !== 'pursuing') return;
+  e.state = 'pancaked';
+  e.timer = 0;
+  e.mesh.scale.set(1.55, 0.15, 1.5);
+  e.mesh.position.y = 0.1;
+
+  gameState.wrecksCount++;
+  incrementCombo();
+  incrementCombo();
+  addCompactorCharge(30);
+  sfx.playClaySmash(true);
+  sfx.playBonusFanfare();
+  gameState.cameraShake = 0.85;
+
+  spawnClayBurst(e.x, 1.8, e.z, 0x9b5de5, 22, 1.35);
+
+  const bonusPts = isMegaBoulder ? 2500 : 1200;
+  gameState.timeLeft += 6;
+  addScore(
+    bonusPts,
+    e.x,
+    3.5,
+    e.z,
+    isMegaBoulder ? '💥 MEGA-BOULDER BOSS CRUSH! +6s' : '🚨 ENFORCER FLATTENED! +6s',
+    'boulder'
+  );
+}
+
+// ============================================================================
 // 9. KATAMARI-STYLE CLAY COMPACTOR BOULDER CANNON
 // ============================================================================
 const activeBoulders = [];
@@ -962,6 +1420,7 @@ function launchClayBoulder() {
   if (gameState.compactorCharge < 25 || !gameState.running) return;
 
   const chargeFraction = gameState.compactorCharge / 100;
+  const isMega = gameState.compactorCharge >= 95;
   const radius = 2.1 + chargeFraction * 2.1; // Up to massive 4.2m radius boulder!
   gameState.compactorCharge = 0;
   gameState.bouldersFired++;
@@ -1004,22 +1463,30 @@ function launchClayBoulder() {
     pos: spawnPos,
     vel: forward.multiplyScalar(44),
     radius,
+    isMega,
     age: 0,
     maxAge: 3.6,
   });
 
   // Recoil squash on the sweeper + screen shake
   gameState.cameraShake = 0.65;
-  spawnWorldPopup(sweeper.pos.x, 4.5, sweeper.pos.z, 'MEGA CLAY BOULDER! ☄️', 'boulder');
+  spawnWorldPopup(
+    sweeper.pos.x,
+    4.5,
+    sweeper.pos.z,
+    isMega ? '100% MEGA CLAY BOULDER! ☄️' : 'CLAY BOULDER LAUNCH! ☄️',
+    'boulder'
+  );
   updateHud();
 }
 
 // ============================================================================
-// 10. GAME STATE, COMBOS, POPUPS & INPUT HANDLING
+// 10. GAME STATE, NIGHT MODE, COMBOS, POPUPS & INPUT HANDLING
 // ============================================================================
 const gameState = {
   running: false,
   shiftNumber: 1,
+  nightMode: false,
   score: 0,
   combo: 1,
   comboTimer: 0,
@@ -1029,9 +1496,50 @@ const gameState = {
   bouldersFired: 0,
   quotaTarget: 75,
   quotaBonusAwarded: false,
+  activePowerup: null, // 'magnet' | 'flamethrower' | 'steamroller' | null
+  powerupTimer: 0,
   stopMotion12Fps: true,
   cameraShake: 0,
 };
+
+function setNightMode(isNight) {
+  gameState.nightMode = isNight;
+
+  if (isNight) {
+    scene.background.setHex(0x11152c);
+    scene.fog.color.setHex(0x11152c);
+    hemiLight.color.setHex(0x4b5c9e);
+    hemiLight.groundColor.setHex(0x1b1528);
+    hemiLight.intensity = 0.55;
+    sunLight.color.setHex(0x8ecae6);
+    sunLight.intensity = 0.65;
+    buildingWindowMat.emissiveIntensity = 1.1;
+    streetLampBulbMat.emissiveIntensity = 1.4;
+    sweeper.headlightsGroup.visible = true;
+  } else {
+    scene.background.setHex(0xdcf3ff);
+    scene.fog.color.setHex(0xdcf3ff);
+    hemiLight.color.setHex(0xfff8eb);
+    hemiLight.groundColor.setHex(0x8b728e);
+    hemiLight.intensity = 0.95;
+    sunLight.color.setHex(0xfff1d6);
+    sunLight.intensity = 1.65;
+    buildingWindowMat.emissiveIntensity = 0.0;
+    streetLampBulbMat.emissiveIntensity = 0.1;
+    sweeper.headlightsGroup.visible = false;
+  }
+
+  const toggleNightBtn = document.getElementById('toggle-night');
+  if (toggleNightBtn) {
+    toggleNightBtn.classList.toggle('active', isNight);
+    toggleNightBtn.textContent = isNight ? '🌙 Night Mode' : '☀️ Day Mode';
+  }
+  if (shiftBadgeEl) {
+    shiftBadgeEl.textContent = `SHIFT #${gameState.shiftNumber} • ${
+      isNight ? 'MIDNIGHT CLAYVILLE 🌙' : 'DAYTIME CLAYVILLE ☀️'
+    }`;
+  }
+}
 
 const keys = {
   up: false,
@@ -1244,6 +1752,11 @@ function demolishVehicle(v, impactSourcePos, impactDir, forcePancake = false) {
     addScore(isHeavy ? 300 : 180, v.x, 2.8, v.z, word, 'smash');
   }
 
+  // Every 7 vehicles demolished dispatches a City Enforcer Boss Hazard!
+  if (gameState.wrecksCount % 7 === 0) {
+    spawnEnforcerBoss();
+  }
+
   // Every 10 vehicles demolished grants a +4s Rampage Time Bonus!
   if (gameState.wrecksCount % 10 === 0) {
     gameState.timeLeft += 4;
@@ -1261,6 +1774,10 @@ const comboCountEl = document.getElementById('combo-count');
 const comboTimerFillEl = document.getElementById('combo-timer-fill');
 const timerValEl = document.getElementById('timer-value');
 const shiftBadgeEl = document.getElementById('shift-level-badge');
+const powerupBadgeEl = document.getElementById('powerup-badge');
+const powerupNameEl = document.getElementById('powerup-name');
+const powerupTimerFillEl = document.getElementById('powerup-timer-fill');
+const enforcerBadgeEl = document.getElementById('enforcer-badge');
 const cleanPercentEl = document.getElementById('clean-percent');
 const cleanBarFillEl = document.getElementById('clean-bar-fill');
 const wrecksCountEl = document.getElementById('wrecks-count');
@@ -1291,6 +1808,31 @@ function updateHud() {
     comboTimerFillEl.style.width = `${(gameState.comboTimer / 3.4) * 100}%`;
   } else {
     comboBadgeEl.classList.add('hidden');
+  }
+
+  // Active Power-Up HUD indicator
+  if (gameState.activePowerup && gameState.powerupTimer > 0) {
+    powerupBadgeEl.classList.remove('hidden');
+    const names = {
+      magnet: '🧲 GIANT MAGNET BRUSHES',
+      flamethrower: '🔥 DUAL FLAMETHROWERS',
+      steamroller: '🛞 MONSTER STEAMROLLER',
+    };
+    powerupNameEl.textContent = names[gameState.activePowerup] || 'POWER-UP!';
+    powerupTimerFillEl.style.width = `${(gameState.powerupTimer / 12.0) * 100}%`;
+  } else if (powerupBadgeEl) {
+    powerupBadgeEl.classList.add('hidden');
+  }
+
+  // Active Enforcer Alert indicator
+  const activeEnforcerCount = enforcers.filter((e) => e.state === 'pursuing').length;
+  if (enforcerBadgeEl) {
+    enforcerBadgeEl.classList.toggle('hidden', activeEnforcerCount === 0);
+    if (activeEnforcerCount > 0) {
+      enforcerBadgeEl.textContent = `🚨 ${activeEnforcerCount} ENFORCER BOSS${
+        activeEnforcerCount > 1 ? 'ES' : ''
+      } ACTIVE!`;
+    }
   }
 
   // Timer formatting
@@ -1331,7 +1873,7 @@ function updateHud() {
   compactorCardEl.classList.toggle('ready', canFire);
 
   if (charge >= 100) {
-    compactorStatusEl.textContent = 'MAX MEGA-BOULDER READY!';
+    compactorStatusEl.textContent = '100% MEGA-BOULDER READY!';
   } else if (canFire) {
     compactorStatusEl.textContent = 'READY TO LAUNCH! [SPACE]';
   } else {
@@ -1361,8 +1903,15 @@ const toggleStopMotionBtn = document.getElementById('toggle-stopmotion');
 toggleStopMotionBtn.addEventListener('click', () => {
   gameState.stopMotion12Fps = !gameState.stopMotion12Fps;
   toggleStopMotionBtn.classList.toggle('active', gameState.stopMotion12Fps);
-  toggleStopMotionBtn.textContent = `🎬 12fps Clay Feel: ${gameState.stopMotion12Fps ? 'ON' : 'OFF'}`;
+  toggleStopMotionBtn.textContent = `🎬 12fps: ${gameState.stopMotion12Fps ? 'ON' : 'OFF'}`;
 });
+
+const toggleNightBtn = document.getElementById('toggle-night');
+if (toggleNightBtn) {
+  toggleNightBtn.addEventListener('click', () => {
+    setNightMode(!gameState.nightMode);
+  });
+}
 
 const toggleSoundBtn = document.getElementById('toggle-sound');
 toggleSoundBtn.addEventListener('click', () => {
@@ -1393,16 +1942,30 @@ function startGame(nextShift = false) {
   gameState.wrecksCount = 0;
   gameState.bouldersFired = 0;
   gameState.quotaBonusAwarded = false;
+  gameState.activePowerup = null;
+  gameState.powerupTimer = 0;
   gameState.running = true;
 
-  shiftBadgeEl.textContent = `SHIFT #${gameState.shiftNumber} • DOWNTOWN CLAYVILLE`;
+  // Even level numbers automatically switch to Night Mode!
+  const isEvenShiftNight = gameState.shiftNumber % 2 === 0;
+  setNightMode(isEvenShiftNight);
+  applySweeperPowerupVisuals();
 
   sweeper.pos.set(-18, 0, 18);
   sweeper.heading = 0;
   sweeper.speed = 0;
 
   spawnCityMess();
+  resetStreetProps();
+  spawnPowerupTubs();
   resetTraffic();
+  resetEnforcers();
+
+  // On Shift #2 and higher, dispatch an initial Enforcer Boss right away!
+  if (gameState.shiftNumber >= 2) {
+    spawnEnforcerBoss();
+  }
+
   updateHud();
 
   modalOverlay.classList.add('hidden');
@@ -1415,6 +1978,8 @@ function endShift() {
   gameState.running = false;
   const cleanPct = getCleanlinessPercentage();
   const wonQuota = cleanPct >= gameState.quotaTarget;
+  const nextShiftNum = gameState.shiftNumber + 1;
+  const nextModeLabel = nextShiftNum % 2 === 0 ? '🌙 NIGHT SHIFT' : '☀️ DAY SHIFT';
 
   document.getElementById('gameover-badge').textContent = wonQuota
     ? `SHIFT #${gameState.shiftNumber} QUOTA CRUSHED!`
@@ -1423,8 +1988,8 @@ function endShift() {
     ? 'STREET SWEEP SUPERSTAR!'
     : 'BACK TO THE CLAY GARAGE!';
   document.getElementById('gameover-subtitle').textContent = wonQuota
-    ? `You scrubbed ${cleanPct}% of Clayville and flattened ${gameState.wrecksCount} vehicles!`
-    : `You reached ${cleanPct}% cleanliness (Quota: ${gameState.quotaTarget}%). Smash & sweep faster for time bonuses!`;
+    ? `You scrubbed ${cleanPct}% of Clayville and flattened ${gameState.wrecksCount} vehicles! Ready for Shift #${nextShiftNum} (${nextModeLabel})?`
+    : `You reached ${cleanPct}% cleanliness (Quota: ${gameState.quotaTarget}%). Try Shift #${nextShiftNum} (${nextModeLabel})!`;
 
   document.getElementById('final-score').textContent = gameState.score.toLocaleString();
   document.getElementById('final-clean').textContent = `${cleanPct}%`;
@@ -1474,19 +2039,30 @@ function updateGame(dt, elapsed) {
       }
     }
 
+    // Active Power-Up timer decay
+    if (gameState.powerupTimer > 0) {
+      gameState.powerupTimer -= dt;
+      if (gameState.powerupTimer <= 0) {
+        gameState.activePowerup = null;
+        applySweeperPowerupVisuals();
+      }
+    }
+
+    const isMagnet = gameState.activePowerup === 'magnet';
+    const isFlamethrower = gameState.activePowerup === 'flamethrower';
+    const isSteamroller = gameState.activePowerup === 'steamroller';
+
     // ------------------------------------------------------------------------
     // A. SWEEPER TRUCK DRIVING & TURBO DRIFT PHYSICS (Keyboard + Mobile Touch)
     // ------------------------------------------------------------------------
     sweeper.turboActive = keys.shift;
-    const targetMax = sweeper.turboActive ? 40 : sweeper.maxSpeed;
+    const targetMax = (sweeper.turboActive ? 40 : sweeper.maxSpeed) * (isSteamroller ? 1.12 : 1.0);
     const accel = sweeper.turboActive ? 46 : 30;
 
     if (touchJoystick.active) {
-      // Touch joystick driving: accelerate proportional to thumb drag & steer smoothly toward target heading
       const desiredSpeed = targetMax * Math.min(1, touchJoystick.magnitude * 1.15);
       sweeper.speed = THREE.MathUtils.lerp(sweeper.speed, desiredSpeed, 8 * dt);
 
-      // Shortest-angle turn toward isometric drag direction
       let angleDiff = touchJoystick.targetHeading - sweeper.heading;
       while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
       while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
@@ -1503,7 +2079,6 @@ function updateGame(dt, elapsed) {
         if (Math.abs(sweeper.speed) < 0.2) sweeper.speed = 0;
       }
 
-      // Responsive arcade keyboard steering
       const turnRate = (sweeper.turboActive ? 3.2 : 2.65) * (sweeper.speed >= -0.5 ? 1 : -1);
       if (keys.left) sweeper.heading += turnRate * dt;
       if (keys.right) sweeper.heading -= turnRate * dt;
@@ -1515,7 +2090,7 @@ function updateGame(dt, elapsed) {
     sweeper.pos.z += moveZ;
 
     // Collide & slide softly against building blocks
-    const truckRadius = 2.65;
+    const truckRadius = isSteamroller ? 3.35 : 2.65;
     for (let i = 0; i < buildingObstacles.length; i++) {
       const b = buildingObstacles[i];
       const dx = sweeper.pos.x - b.x;
@@ -1554,7 +2129,7 @@ function updateGame(dt, elapsed) {
     );
 
     // Spin rotary brushes (stepped to 12fps when stop-motion feel is active!)
-    const brushSpeed = sweeper.turboActive ? 22 : 13;
+    const brushSpeed = sweeper.turboActive || isMagnet ? 24 : 13;
     sweeper.leftBrush.rotation.y = animClock * brushSpeed;
     sweeper.rightBrush.rotation.y = -animClock * brushSpeed;
 
@@ -1574,12 +2149,57 @@ function updateGame(dt, elapsed) {
       );
     }
 
+    // Dual Side-Flamethrowers spewing clay fireballs left & right!
+    if (isFlamethrower && Math.random() < 0.75) {
+      const rightVecX = Math.cos(sweeper.heading);
+      const rightVecZ = -Math.sin(sweeper.heading);
+      [-1, 1].forEach((side) => {
+        const distOut = 3.2 + Math.random() * 4.8;
+        const fx = sweeper.pos.x + rightVecX * side * distOut;
+        const fz = sweeper.pos.z + rightVecZ * side * distOut;
+        const fireColor = Math.random() > 0.4 ? 0xff5400 : 0xffbe0b;
+        spawnSmokePuff(fx, 1.3, fz, fireColor, 0.85);
+      });
+    }
+
     // ------------------------------------------------------------------------
-    // B. SWEEPING STREET GRIME & VACUUMING CLAY CHUNKS
+    // B. COLLECTIBLE GOLDEN PLAY-DOH TUB POWER-UPS
+    // ------------------------------------------------------------------------
+    for (let i = 0; i < powerupTubs.length; i++) {
+      const tub = powerupTubs[i];
+      if (tub.active) {
+        tub.mesh.rotation.y = animClock * 2.6 + i;
+        tub.mesh.position.y = 0.25 + Math.abs(Math.sin(animClock * 4 + i)) * 0.65;
+
+        const dist = Math.hypot(tub.x - sweeper.pos.x, tub.z - sweeper.pos.z);
+        if (dist < 4.2) {
+          tub.active = false;
+          tub.respawnTimer = 18.0;
+          tub.mesh.visible = false;
+          activatePowerup(tub.powerup);
+          spawnClayBurst(tub.x, 1.5, tub.z, 0xffbe0b, 14, 1.1);
+        }
+      } else {
+        tub.respawnTimer -= dt;
+        if (tub.respawnTimer <= 0) {
+          tub.active = true;
+          tub.mesh.visible = true;
+        }
+      }
+    }
+
+    // ------------------------------------------------------------------------
+    // C. SWEEPING STREET GRIME & VACUUMING CLAY CHUNKS
     // ------------------------------------------------------------------------
     const brushCenterX = sweeper.pos.x + Math.sin(sweeper.heading) * 2.8;
     const brushCenterZ = sweeper.pos.z + Math.cos(sweeper.heading) * 2.8;
-    const sweepRadius = sweeper.turboActive ? 5.6 : 4.4;
+    const sweepRadius = isMagnet
+      ? 12.5
+      : isFlamethrower || isSteamroller
+      ? 7.8
+      : sweeper.turboActive
+      ? 5.6
+      : 4.4;
 
     for (let i = 0; i < grimePatches.length; i++) {
       const g = grimePatches[i];
@@ -1594,7 +2214,6 @@ function updateGame(dt, elapsed) {
           addScore(45, g.x, 1.5, g.z, 'CLEAN!', '');
         }
       } else {
-        // Animate grime & trash shrinking and flying into the brushes!
         g.suckProgress += dt * 5.5;
         g.mesh.position.x = THREE.MathUtils.lerp(g.x, brushCenterX, g.suckProgress);
         g.mesh.position.z = THREE.MathUtils.lerp(g.z, brushCenterZ, g.suckProgress);
@@ -1610,11 +2229,11 @@ function updateGame(dt, elapsed) {
     }
 
     // Update & vacuum loose clay chunks from smashed cars
+    const chunkMagnetRadius = isMagnet ? 18.0 : 8.5;
     for (let i = looseClayChunks.length - 1; i >= 0; i--) {
       const c = looseClayChunks[i];
       c.age += dt;
 
-      // Gravity & road bounce
       c.vel.y -= 26 * dt;
       c.mesh.position.addScaledVector(c.vel, dt);
       c.mesh.rotation.x += c.rotVel.x * dt;
@@ -1627,15 +2246,15 @@ function updateGame(dt, elapsed) {
         c.vel.z *= 0.72;
       }
 
-      // Magnetic vacuum pull toward the sweeper brushes!
       const dx = brushCenterX - c.mesh.position.x;
       const dz = brushCenterZ - c.mesh.position.z;
       const dist = Math.hypot(dx, dz);
 
-      if (dist < 8.5 && c.age > 0.18) {
-        c.mesh.position.x += (dx / dist) * 24 * dt;
-        c.mesh.position.z += (dz / dist) * 24 * dt;
-        if (dist < 2.2) {
+      if (dist < chunkMagnetRadius && c.age > 0.18) {
+        const pullSpeed = isMagnet ? 38 : 24;
+        c.mesh.position.x += (dx / dist) * pullSpeed * dt;
+        c.mesh.position.z += (dz / dist) * pullSpeed * dt;
+        if (dist < 2.4) {
           sfx.playSweepPop(gameState.combo);
           addCompactorCharge(1.2);
           gameState.score += 20 * gameState.combo;
@@ -1652,19 +2271,18 @@ function updateGame(dt, elapsed) {
     }
 
     // ------------------------------------------------------------------------
-    // C. TRAFFIC AI & WILD DEMOLITION COLLISIONS
+    // D. TRAFFIC AI & WILD DEMOLITION COLLISIONS
     // ------------------------------------------------------------------------
     const impactDir = new THREE.Vector3(Math.sin(sweeper.heading), 0, Math.cos(sweeper.heading));
+    const hitExtraRadius = isFlamethrower ? 5.2 : isSteamroller ? 2.2 : 0;
 
     for (let i = vehicles.length - 1; i >= 0; i--) {
       const v = vehicles[i];
 
       if (v.state === 'driving') {
-        // Move along street
         v.x += Math.sin(v.heading) * v.speed * dt;
         v.z += Math.cos(v.heading) * v.speed * dt;
 
-        // Wrap around world edges
         if (v.x > WORLD_HALF) v.x = -WORLD_HALF;
         if (v.x < -WORLD_HALF) v.x = WORLD_HALF;
         if (v.z > WORLD_HALF) v.z = -WORLD_HALF;
@@ -1672,21 +2290,21 @@ function updateGame(dt, elapsed) {
 
         v.mesh.position.x = v.x;
         v.mesh.position.z = v.z;
-        // Stop-motion waddle on driving vehicles
         v.mesh.rotation.z = Math.sin(animClock * 12 + i) * 0.045;
 
-        // Check collision with Sweeper Truck!
         const distToTruck = Math.hypot(v.x - sweeper.pos.x, v.z - sweeper.pos.z);
         const distToBrushes = Math.hypot(v.x - brushCenterX, v.z - brushCenterZ);
-        if (distToTruck < v.radius + 2.6 || distToBrushes < v.radius + 2.2) {
-          demolishVehicle(v, sweeper.pos, impactDir, false);
+        if (
+          distToTruck < v.radius + 2.6 + hitExtraRadius ||
+          distToBrushes < v.radius + 2.2 + hitExtraRadius
+        ) {
+          demolishVehicle(v, sweeper.pos, impactDir, isSteamroller);
         }
       } else if (v.state === 'pancaked') {
         v.timer += dt;
-        // Sweeper can vacuum up pancaked cars after squishing them!
         if (v.timer > 0.45) {
           const dist = Math.hypot(v.x - brushCenterX, v.z - brushCenterZ);
-          if (dist < 4.5) {
+          if (dist < (isMagnet ? 9.5 : 4.5)) {
             sfx.playSweepPop(10);
             addCompactorCharge(8);
             addScore(150, v.x, 1.5, v.z, 'SCHLORPED!', '');
@@ -1709,7 +2327,6 @@ function updateGame(dt, elapsed) {
         v.mesh.rotation.y += v.rotVel.y * dt;
         v.mesh.rotation.z += v.rotVel.z * dt;
 
-        // Bounce & squash on road impact
         if (v.mesh.position.y < 0.5 && v.vel.y < 0) {
           v.mesh.position.y = 0.2;
           v.vel.y *= -0.35;
@@ -1725,19 +2342,75 @@ function updateGame(dt, elapsed) {
     }
 
     // ------------------------------------------------------------------------
-    // D. SMASHABLE STREET PROPS (Fire Hydrants gushing blue clay water!)
+    // E. CITY ENFORCERS / BOSS HAZARDS (Dump Trucks & Police Blockades)
+    // ------------------------------------------------------------------------
+    for (let i = enforcers.length - 1; i >= 0; i--) {
+      const e = enforcers[i];
+      if (e.bumpCooldown > 0) e.bumpCooldown -= dt;
+
+      if (e.state === 'pursuing') {
+        // Actively steer toward Big Bristle!
+        const targetAngle = Math.atan2(sweeper.pos.x - e.x, sweeper.pos.z - e.z);
+        let diff = targetAngle - e.heading;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        e.heading += THREE.MathUtils.clamp(diff, -2.1 * dt, 2.1 * dt);
+
+        e.x += Math.sin(e.heading) * e.speed * dt;
+        e.z += Math.cos(e.heading) * e.speed * dt;
+        e.mesh.position.set(e.x, 0, e.z);
+        e.mesh.rotation.y = e.heading;
+        e.mesh.rotation.z = Math.sin(animClock * 15 + i) * 0.05;
+
+        const dist = Math.hypot(e.x - sweeper.pos.x, e.z - sweeper.pos.z);
+        if (dist < e.radius + truckRadius + (isFlamethrower ? 3.5 : 0)) {
+          // If player has Steamroller Tires, Flamethrowers, or high-speed Turbo, crush the Enforcer!
+          if (isSteamroller || isFlamethrower || sweeper.turboActive) {
+            demolishEnforcer(e, impactDir, false);
+          } else if (e.bumpCooldown <= 0) {
+            // Armored Boss shoves player back—prompting them to use Boulder or Turbo/Powerup!
+            e.bumpCooldown = 1.1;
+            sweeper.speed = -18;
+            gameState.cameraShake = 0.55;
+            sfx.playClaySmash(true);
+            spawnWorldPopup(
+              e.x,
+              3.5,
+              e.z,
+              'ARMORED ENFORCER! USE BOULDER OR TURBO! 🛡️',
+              'smash'
+            );
+          }
+        }
+      } else if (e.state === 'pancaked') {
+        e.timer += dt;
+        if (e.timer > 5.0) {
+          scene.remove(e.mesh);
+          enforcers.splice(i, 1);
+        }
+      }
+    }
+
+    // ------------------------------------------------------------------------
+    // F. DESTRUCTIBLE STREET FURNITURE (Hot-Dog Carts, Cafés, Bus Stops, etc.)
     // ------------------------------------------------------------------------
     for (let i = 0; i < streetProps.length; i++) {
       const p = streetProps[i];
       if (!p.smashed) {
         const dist = Math.hypot(p.x - sweeper.pos.x, p.z - sweeper.pos.z);
-        if (dist < 3.4) {
+        if (dist < 3.6 + hitExtraRadius) {
           p.smashed = true;
-          p.vel.set(impactDir.x * 20, 12, impactDir.z * 20);
+          p.vel.set(
+            impactDir.x * 20 + (Math.random() - 0.5) * 8,
+            12 + Math.random() * 5,
+            impactDir.z * 20 + (Math.random() - 0.5) * 8
+          );
           p.rotVel.set(8, 5, 9);
           sfx.playClaySmash(false);
-          spawnClayBurst(p.x, 1.0, p.z, 0x3b82f6, 12, 1.1); // Blue clay water burst!
-          addScore(120, p.x, 2.2, p.z, 'HYDRANT GUSHER!', 'smash');
+          incrementCombo();
+          addCompactorCharge(6);
+          spawnClayBurst(p.x, 1.2, p.z, p.burstColor, 12, 1.1);
+          addScore(p.points, p.x, 2.4, p.z, p.label, 'smash');
         }
       } else if (p.mesh.visible) {
         p.vel.y -= 28 * dt;
@@ -1749,7 +2422,7 @@ function updateGame(dt, elapsed) {
     }
 
     // ------------------------------------------------------------------------
-    // E. ACTIVE COMPACTOR CLAY BOULDERS
+    // G. ACTIVE COMPACTOR CLAY BOULDERS
     // ------------------------------------------------------------------------
     for (let i = activeBoulders.length - 1; i >= 0; i--) {
       const b = activeBoulders[i];
@@ -1765,6 +2438,28 @@ function updateGame(dt, elapsed) {
         if (v.state !== 'driving') continue;
         if (Math.hypot(v.x - b.pos.x, v.z - b.pos.z) < b.radius + v.radius + 0.8) {
           demolishVehicle(v, b.pos, b.vel.clone().normalize(), true);
+        }
+      }
+
+      // Flatten City Enforcer Bosses in the boulder's path for HUGE bonus points!
+      for (let j = 0; j < enforcers.length; j++) {
+        const e = enforcers[j];
+        if (e.state !== 'pursuing') continue;
+        if (Math.hypot(e.x - b.pos.x, e.z - b.pos.z) < b.radius + e.radius + 1.2) {
+          demolishEnforcer(e, b.vel.clone().normalize(), b.isMega);
+        }
+      }
+
+      // Smash street furniture in the boulder's path!
+      for (let j = 0; j < streetProps.length; j++) {
+        const p = streetProps[j];
+        if (p.smashed) continue;
+        if (Math.hypot(p.x - b.pos.x, p.z - b.pos.z) < b.radius + 1.8) {
+          p.smashed = true;
+          p.vel.set(b.vel.x * 0.5, 14, b.vel.z * 0.5);
+          p.rotVel.set(9, 6, 8);
+          spawnClayBurst(p.x, 1.2, p.z, p.burstColor, 10, 1.1);
+          addScore(p.points, p.x, 2.4, p.z, p.label, 'smash');
         }
       }
 
@@ -1823,6 +2518,7 @@ function updateGame(dt, elapsed) {
 
 // Initial idle scene setup so the background diorama is alive on the title screen
 spawnCityMess();
+spawnPowerupTubs();
 resetTraffic();
 camera.position.copy(sweeper.pos.clone().add(CAMERA_OFFSET));
 camera.lookAt(sweeper.pos);

@@ -45,7 +45,14 @@
       <div class="clay-card hud-timer-panel">
         <div class="hud-label">SHIFT TIMER</div>
         <div id="timer-value" class="hud-timer-num">01:30</div>
-        <div id="shift-level-badge" class="shift-badge">SHIFT #1 • DOWNTOWN CLAYVILLE</div>
+        <div id="shift-level-badge" class="shift-badge">SHIFT #1 • DAYTIME CLAYVILLE</div>
+        <div id="powerup-badge" class="powerup-badge hidden">
+          <span id="powerup-name">🧲 MAGNET BRUSHES</span>
+          <div class="powerup-timer-bar"><div id="powerup-timer-fill"></div></div>
+        </div>
+        <div id="enforcer-badge" class="enforcer-badge hidden">
+          🚨 ENFORCER SQUAD DISPATCHED!
+        </div>
       </div>
 
       <div class="clay-card hud-clean-panel">
@@ -95,7 +102,10 @@
         </div>
         <div class="toggles-row">
           <button id="toggle-stopmotion" class="clay-pill active" title="Toggle 12 FPS Stop-Motion Clay Wobble">
-            🎬 12fps Clay Feel: ON
+            🎬 12fps: ON
+          </button>
+          <button id="toggle-night" class="clay-pill" title="Toggle Day / Night Mode (Auto-Night on Even Shifts!)">
+            ☀️ Day Mode
           </button>
           <button id="toggle-sound" class="clay-pill active" title="Toggle Arcade Sound Effects">
             🔊 SFX: ON
@@ -111,30 +121,30 @@
         <h1 class="game-title">STREET SWEEP<br/><span>SUPERSTAR</span></h1>
         <p class="modal-tagline">
           The streets of <strong>Clayville</strong> are filthy—and parked cars are blocking the curb!
-          Fire up <em>Big Bristle</em>, scrub the asphalt spotless, flatten every car &amp; bike in your lane,
+          Fire up <em>Big Bristle</em>, scrub the asphalt spotless, flatten every car &amp; café in your lane,
           and launch giant compacted <strong>Play-Doh Boulders</strong> before your 90-second shift ends!
         </p>
 
         <div class="feature-grid">
           <div class="feature-item">
-            <div class="feature-icon">🧹</div>
+            <div class="feature-icon">🧹🌭</div>
             <div>
-              <strong>Scrub &amp; Vacuum</strong>
-              <p>Sweep grime, trash piles, and clay chunks to hit the 75% Cleanliness Quota and earn +Time bonuses!</p>
+              <strong>Sweep &amp; Smash Street Furniture</strong>
+              <p>Scrub grime &amp; demolish cars, bikes, hot-dog carts, café umbrellas, bus stops &amp; newsstands for huge combos!</p>
             </div>
           </div>
           <div class="feature-item">
-            <div class="feature-icon">🚗💥</div>
+            <div class="feature-icon">🥫🔥</div>
             <div>
-              <strong>Total Demolition</strong>
-              <p>Plow right through sedans, taxis, vans, and bikes! Squash them into flat clay pancakes or send them flying!</p>
+              <strong>Golden Play-Doh Tub Power-Ups</strong>
+              <p>Grab golden tubs in intersections for <strong>Giant Magnet Brushes</strong>, <strong>Dual Flamethrowers</strong>, or <strong>Monster Steamroller Tires</strong>!</p>
             </div>
           </div>
           <div class="feature-item">
-            <div class="feature-icon">☄️</div>
+            <div class="feature-icon">🚨🌙</div>
             <div>
-              <strong>Clay-Ball Compactor</strong>
-              <p>Every car &amp; trash heap fills your hopper. Press <kbd>SPACE</kbd> to fire a colossal marbled clay boulder down the street!</p>
+              <strong>Boss Enforcers &amp; Night Shifts</strong>
+              <p>Watch out for Police Blockades &amp; Heavy Clay Dump Trucks—flatten them with a <strong>100% Mega-Boulder</strong>! Even shifts switch to glowing <strong>Night Mode</strong>!</p>
             </div>
           </div>
         </div>

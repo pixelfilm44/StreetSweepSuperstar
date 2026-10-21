@@ -169,6 +169,55 @@ html, body {
   letter-spacing: 0.05em;
 }
 
+.powerup-badge {
+  margin-top: 6px;
+  background: linear-gradient(90deg, #ff6b35, #ffbe2e);
+  color: var(--clay-dark);
+  padding: 4px 10px;
+  border-radius: 12px;
+  border: 3px solid var(--clay-dark);
+  font-weight: 700;
+  font-size: 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  box-shadow: 0 3px 0 var(--clay-dark);
+  animation: clayPulse 0.45s infinite alternate;
+}
+
+.powerup-badge.hidden,
+.enforcer-badge.hidden {
+  display: none;
+}
+
+.powerup-timer-bar {
+  width: 100%;
+  height: 5px;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+#powerup-timer-fill {
+  width: 100%;
+  height: 100%;
+  background: #38ef7d;
+  transition: width 0.08s linear;
+}
+
+.enforcer-badge {
+  margin-top: 5px;
+  background: var(--clay-red);
+  color: #fff;
+  padding: 3px 10px;
+  border-radius: 99px;
+  border: 2px solid var(--clay-dark);
+  font-weight: 700;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  animation: urgentShake 0.35s infinite alternate;
+}
+
 /* Right Cleanliness Quota Panel */
 .hud-clean-panel {
   min-width: 290px;
